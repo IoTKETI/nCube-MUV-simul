@@ -202,6 +202,8 @@ try {
     fs.writeFileSync('fc_data_model.json', JSON.stringify(fc, null, 4), 'utf8');
 }
 
+var flag_base_mode = 0;
+
 function parseMavFromDrone(mavPacket) {
     try {
         var ver = mavPacket.substr(0, 2);
