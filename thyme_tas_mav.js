@@ -12,9 +12,7 @@
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-    // for TAS
-var net = require('net');
-var ip = require('ip');
+// for TAS
 var moment = require('moment');
 var fs = require('fs');
 let dgram = require('dgram');
@@ -134,7 +132,6 @@ var mavStrFromDrone = '';
 var mavStrFromDroneLength = 0;
 
 function mavPortData(data) {
-    console.log(data);
     mavStrFromDrone += hex(data);
     while (mavStrFromDrone.length > 12) {
         var stx = mavStrFromDrone.substr(0, 2);
@@ -252,7 +249,6 @@ function parseMavFromDrone(mavPacket) {
             fc.global_position_int.alt = Buffer.from(alt, 'hex').readInt32LE(0);
             fc.global_position_int.relative_alt = Buffer.from(relative_alt, 'hex').readInt32LE(0);
 
-            muv_mqtt_client.publish(muv_pub_fc_gpi_topic, JSON.stringify(fc.global_position_int));
         } else if (msg_id == mavlink.MAVLINK_MSG_ID_COMMAND_LONG) { // #76 : COMMAND_LONG
         } else if (msg_id == mavlink.MAVLINK_MSG_ID_HEARTBEAT) { // #00 : HEARTBEAT
             if (ver == 'fd') {
@@ -290,8 +286,6 @@ function parseMavFromDrone(mavPacket) {
             fc.heartbeat.custom_mode = Buffer.from(custom_mode, 'hex').readUInt32LE(0);
             fc.heartbeat.system_status = Buffer.from(system_status, 'hex').readUInt8(0);
             fc.heartbeat.mavlink_version = Buffer.from(mavlink_version, 'hex').readUInt8(0);
-
-            muv_mqtt_client.publish(muv_pub_fc_hb_topic, JSON.stringify(fc.heartbeat));
 
             if (fc.heartbeat.base_mode & 0x80) {
                 if (flag_base_mode == 3) {
