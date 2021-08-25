@@ -14,33 +14,24 @@
 
     // for TAS
 var net = require('net');
-var HOST = '127.0.0.1';
-var PORT1 = 14550; // output: SITL --> GCS
-var PORT2 = 14552; // input : GCS --> SITL
-
-var dgram = require('dgram');
-var server1 = dgram.createSocket('udp4');
-
-server1.bind(PORT1, HOST);
-
+var ip = require('ip');
 var moment = require('moment');
 var fs = require('fs');
+let dgram = require('dgram');
 
 var mavlink = require('./mavlibrary/mavlink.js');
 
-// global.mavPort = null;
-//
-// var mavPortNum = '/dev/ttyAMA0';
-// var mavBaudrate = '57600';
+let HOST = '127.0.0.1';
+let PORT1 = 14550; // output: SITL --> GCS
+let PORT2 = 14552; // input : GCS --> SITL
+
+let sitlUDP = null;
 
 exports.ready = function tas_ready() {
     if (my_drone_type === 'pixhawk') {
-        server1.on('listening', function () {
-            let address1 = server1.address();
-            console.log('UDP#1 listening' + ":" + address1.address + ":" + address1.port);
-        });
-        server1.on('message', mavPortData);
+        mavPortOpening();
     } else {
+
     }
 };
 
@@ -57,7 +48,9 @@ function send_aggr_to_Mobius(topic, content_each, gap) {
 
         setTimeout(function () {
             sh_adn.crtci(topic + '?rcn=0', 0, aggr_content[topic], null, function () {
+
             });
+
             delete aggr_content[topic];
         }, gap, topic);
     }
@@ -76,56 +69,47 @@ exports.noti = function (path_arr, cinObj, socket) {
 };
 
 exports.gcs_noti_handler = function (message) {
-    if (my_drone_type === 'pixhawk') {
-        server1.send(message, 0, message.length, PORT2, HOST, function (err) {
-            if (err) throw err;
-        });
-    } else {
+    if (sitlUDP != null) {
+        sitlUDP.send(message, 0, message.length, PORT2, HOST,
+            function (err) {
+                if (err) {
+                    console.log('UDP message send error', err);
+                    return;
+                }
+            }
+        );
+    }
+    else {
     }
 };
 
-// var SerialPort = require('serialport');
-//
-// function mavPortOpening() {
-//     if (mavPort == null) {
-//         mavPort = new SerialPort(mavPortNum, {
-//             baudRate: parseInt(mavBaudrate, 10),
-//         });
-//
-//         mavPort.on('open', mavPortOpen);
-//         mavPort.on('close', mavPortClose);
-//         mavPort.on('error', mavPortError);
-//         mavPort.on('data', mavPortData);
-//     } else {
-//         if (mavPort.isOpen) {
-//
-//         } else {
-//             mavPort.open();
-//         }
-//     }
-// }
-//
-// function mavPortOpen() {
-//     console.log('mavPort open. ' + mavPortNum + ' Data rate: ' + mavBaudrate);
-// }
-//
-// function mavPortClose() {
-//     console.log('mavPort closed.');
-//
-//     setTimeout(mavPortOpening, 2000);
-// }
-//
-// function mavPortError(error) {
-//     var error_str = error.toString();
-//     console.log('[mavPort error]: ' + error.message);
-//     if (error_str.substring(0, 14) == "Error: Opening") {
-//
-//     } else {
-//         console.log('mavPort error : ' + error);
-//     }
-//
-//     setTimeout(mavPortOpening, 2000);
-// }
+function mavPortOpening() {
+    if (sitlUDP === null) {
+        sitlUDP = dgram.createSocket('udp4');
+        sitlUDP.bind(PORT1, HOST);
+
+        sitlUDP.on('listening', mavPortOpen);
+        sitlUDP.on('message', mavPortData);
+        sitlUDP.on('close', mavPortClose);
+        sitlUDP.on('error', mavPortError);
+    }
+}
+
+function mavPortOpen() {
+    console.log('UDP socket connect to ' + sitlUDP.address().address + ':' + sitlUDP.address().port);
+}
+
+function mavPortClose() {
+    console.log('UDP socket closed.');
+
+    setTimeout(mavPortOpening, 2000);
+}
+
+function mavPortError(error) {
+    console.log('[UDP socket error]: ' + error.message);
+
+    setTimeout(mavPortOpening, 2000);
+}
 
 global.mav_ver = 1;
 
@@ -150,19 +134,11 @@ var mavStrFromDrone = '';
 var mavStrFromDroneLength = 0;
 
 function mavPortData(data) {
+    console.log(data);
     mavStrFromDrone += hex(data);
     while (mavStrFromDrone.length > 12) {
         var stx = mavStrFromDrone.substr(0, 2);
         if (stx === 'fe') {
-            // if (stx === 'fe') {
-            //     var len = parseInt(mavStrFromDrone.substr(2, 2), 16);
-            //     var mavLength = (6 * 2) + (len * 2) + (2 * 2);
-            // }
-            // else { // if (stx === 'fd') {
-            //     len = parseInt(mavStrFromDrone.substr(2, 2), 16);
-            //     mavLength = (10 * 2) + (len * 2) + (2 * 2);
-            // }
-
             var len = parseInt(mavStrFromDrone.substr(2, 2), 16);
             var mavLength = (6 * 2) + (len * 2) + (2 * 2);
 
@@ -172,16 +148,13 @@ function mavPortData(data) {
                 send_aggr_to_Mobius(my_cnt_name, mavPacket, 1500);
                 setTimeout(parseMavFromDrone, 0, mavPacket);
 
-                //if(mavStrFromDroneLength > 0) {
                 mavStrFromDrone = mavStrFromDrone.substr(mavLength);
                 mavStrFromDroneLength = 0;
-                //}
             } else {
                 break;
             }
         } else {
             mavStrFromDrone = mavStrFromDrone.substr(2);
-            //console.log(mavStrFromDrone);
         }
     }
 }
@@ -232,11 +205,6 @@ try {
     fs.writeFileSync('fc_data_model.json', JSON.stringify(fc, null, 4), 'utf8');
 }
 
-var flag_base_mode = 0;
-var start_arm_time = 0;
-var cal_flag = 0;
-var cal_sortiename = '';
-
 function parseMavFromDrone(mavPacket) {
     try {
         var ver = mavPacket.substr(0, 2);
@@ -286,24 +254,6 @@ function parseMavFromDrone(mavPacket) {
 
             muv_mqtt_client.publish(muv_pub_fc_gpi_topic, JSON.stringify(fc.global_position_int));
         } else if (msg_id == mavlink.MAVLINK_MSG_ID_COMMAND_LONG) { // #76 : COMMAND_LONG
-            // if(authResult == 'done') {
-            //     if (secPort.isOpen) {
-            //         len = parseInt(mavPacket.substr(2, 2), 16);
-            //         const tr_ch = new Uint8Array(5 + len);
-            //         tr_ch[0] = 0x5a;
-            //         tr_ch[1] = 0xa5;
-            //         tr_ch[2] = 0xf7;
-            //         tr_ch[3] = (len / 256);
-            //         tr_ch[4] = (len % 256);
-            //
-            //         for (idx = 0; idx < len; idx++) {
-            //             tr_ch[5 + idx] = parseInt(mavPacket.substr((10 + idx) * 2, 2), 16);
-            //         }
-            //
-            //         const message = new Buffer.from(tr_ch.buffer);
-            //         secPort.write(message);
-            //     }
-            // }
         } else if (msg_id == mavlink.MAVLINK_MSG_ID_HEARTBEAT) { // #00 : HEARTBEAT
             if (ver == 'fd') {
                 base_offset = 20;
@@ -345,14 +295,11 @@ function parseMavFromDrone(mavPacket) {
 
             if (fc.heartbeat.base_mode & 0x80) {
                 if (flag_base_mode == 3) {
-                    start_arm_time = moment();
                     flag_base_mode++;
                     my_sortie_name = moment().format('YYYY_MM_DD_T_HH_mm');
                     my_cnt_name = my_parent_cnt_name + '/' + my_sortie_name;
                     sh_adn.crtct(my_parent_cnt_name + '?rcn=0', my_sortie_name, 0, function (rsc, res_body, count) {
                     });
-                    cal_flag = 1;
-                    cal_sortiename = my_sortie_name;
 
                     for (var idx in mission_parent) {
                         if (mission_parent.hasOwnProperty(idx)) {
@@ -367,62 +314,15 @@ function parseMavFromDrone(mavPacket) {
                 }
             } else {
                 flag_base_mode = 0;
-                if (cal_flag == 1) {
-                    cal_flag = 0;
-                    calculateFlightTime(cal_sortiename);
-                }
+
                 my_sortie_name = 'disarm';
                 my_cnt_name = my_parent_cnt_name + '/' + my_sortie_name;
             }
             //console.log(hb);
-        } else if (msg_id == mavlink.MAVLINK_MSG_ID_SYSTEM_TIME) { // #02 : SYSTEM_TIME
-            muv_mqtt_client.publish(muv_pub_fc_system_time_topic, mavPacket);
-        } else if (msg_id == mavlink.MAVLINK_MSG_ID_TIMESYNC) { // #111 : TIMESYNC
-            muv_mqtt_client.publish(muv_pub_fc_timesync_topic, mavPacket);
         }
     } catch (e) {
-        console.log(e.message);
+        console.log('[parseMavFromDrone Error]', e.message);
     }
-}
-
-var end_arm_time = 0;
-var arming_time = 0;
-var flight_time = {};
-
-function calculateFlightTime(cal_sortiename) {
-    end_arm_time = moment();
-    arming_time = end_arm_time.diff(start_arm_time, 'second');
-    var sortie_name = cal_sortiename;
-    sh_adn.rtvct('/Mobius/Life_Prediction/History/' + conf.ae.name + '/la', 0, function (rsc, res_body, count) {
-        if (rsc == 2000) {
-            flight_time = res_body[Object.keys(res_body)[0]].con;
-            if (flight_time.total_flight_time == 0) {
-                flight_time.total_flight_time = arming_time;
-            } else {
-                flight_time.total_flight_time += arming_time;
-            }
-            flight_time.arming_time = arming_time;
-            flight_time.sortie_name = sortie_name;
-            console.log('Flight Time : ', flight_time);
-
-            sh_adn.crtci('/Mobius/Life_Prediction/History/' + conf.ae.name + '?rcn=0', 0, flight_time, null, function () {
-            });
-
-        } else {
-            sh_adn.crtct('/Mobius/Life_Prediction/History' + '?rcn=0', conf.ae.name, 0, function (rsc, res_body, count) {
-            });
-
-            flight_time.total_flight_time = arming_time;
-            flight_time.arming_time = arming_time;
-            flight_time.sortie_name = sortie_name;
-            console.log('Flight Time : ', flight_time);
-            sh_adn.crtci('/Mobius/Life_Prediction/History/' + conf.ae.name + '?rcn=0', 0, flight_time, null, function () {
-            });
-
-            console.log('x-m2m-rsc : ' + rsc + ' <----' + res_body);
-        }
-    });
-    cal_sortiename = '';
 }
 
 function createMissionContainer(idx) {

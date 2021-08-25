@@ -27,13 +27,12 @@ var exec = require('child_process').exec;
 global.sh_adn = require('./http_adn');
 var noti = require('./noti');
 var tas_mav = require('./thyme_tas_mav');
-//var tas_sec = require('./thyme_tas_sec');
-//var tas_mission = require('./thyme_tas_mission');
 
 
 var HTTP_SUBSCRIPTION_ENABLE = 0;
 var MQTT_SUBSCRIPTION_ENABLE = 0;
 
+global.my_webrtc_room = '';
 global.my_rc_name = '';
 global.my_gcs_name = '';
 global.my_parent_cnt_name = '';
@@ -71,8 +70,7 @@ var muv_sub_gcs_topic = '';
 
 var muv_sub_msw_topic = [];
 
-let sub_rc_topic = '';
-let pub_rc_topic = '';
+let req_rc_topic = '';
 
 global.muv_pub_fc_gpi_topic = '';
 global.muv_pub_fc_hb_topic = '';
@@ -147,9 +145,7 @@ function ready_for_notification() {
                 }
             }
         }
-        mqtt_connect(conf.cse.host, muv_sub_gcs_topic, noti_topic, sub_rc_topic);
-
-        muv_mqtt_connect('localhost', 1883, muv_sub_msw_topic);
+        mqtt_connect(conf.cse.host, muv_sub_gcs_topic, noti_topic);
     }
 }
 
@@ -356,7 +352,7 @@ function requireMsw(mission_name, directory_name) {
             webrtc_conf.directory_name = directory_name;
             webrtc_conf.host = drone_info.host;
             webrtc_conf.display_name = drone_info.drone;
-            webrtc_conf.thismav_sysid = my_system_id;
+            webrtc_conf.thismav_sysid = my_webrtc_room;
             fs.writeFileSync('webrtc_conf.json', JSON.stringify(webrtc_conf, null, 4), 'utf8');
         }
         // pm2 start msw_webrtc_msw_webrtc/msw_webrtc
@@ -461,7 +457,6 @@ function retrieve_my_cnt_name(callback) {
             if (drone_info.hasOwnProperty('host')) {
                 conf.cse.host = drone_info.host;
             } else {
-                conf.cse.host = '203.253.128.177';
             }
 
             console.log("gcs host is " + conf.cse.host);
@@ -494,104 +489,6 @@ function retrieve_my_cnt_name(callback) {
             info.name = drone_info.drone;
             conf.cnt.push(JSON.parse(JSON.stringify(info)));
 
-            if (drone_info.hasOwnProperty('mission')) {
-                for (var mission_name in drone_info.mission) {
-                    if (drone_info.mission.hasOwnProperty(mission_name)) {
-                        info = {};
-                        info.parent = '/Mobius/' + drone_info.gcs + '/Mission_Data/' + drone_info.drone;
-                        info.name = mission_name;
-                        conf.cnt.push(JSON.parse(JSON.stringify(info)));
-
-                        var chk_cnt = 'container';
-                        if (drone_info.mission[mission_name].hasOwnProperty(chk_cnt)) {
-                            for (var idx in drone_info.mission[mission_name][chk_cnt]) {
-                                if (drone_info.mission[mission_name][chk_cnt].hasOwnProperty(idx)) {
-                                    var container_name = drone_info.mission[mission_name][chk_cnt][idx].split(':')[0];
-                                    info = {};
-                                    info.parent = '/Mobius/' + drone_info.gcs + '/Mission_Data/' + drone_info.drone + '/' + mission_name;
-                                    info.name = container_name;
-                                    conf.cnt.push(JSON.parse(JSON.stringify(info)));
-
-                                    // muv_sub_msw_topic.push(info.parent + '/' + info.name);
-
-                                    info = {};
-                                    info.parent = '/Mobius/' + drone_info.gcs + '/Mission_Data/' + drone_info.drone + '/' + mission_name + '/' + container_name;
-                                    info.name = my_sortie_name;
-                                    conf.cnt.push(JSON.parse(JSON.stringify(info)));
-                                    mission_parent.push(info.parent);
-
-                                    muv_sub_msw_topic.push(info.parent + '/#');
-
-                                    if (drone_info.mission[mission_name][chk_cnt][idx].split(':').length > 1) {
-                                        info = {};
-                                        info.parent = '/Mobius/' + drone_info.gcs + '/Mission_Data/' + drone_info.drone + '/' + mission_name + '/' + container_name;
-                                        info.name = 'sub_msw';
-                                        info.nu = 'mqtt://' + conf.cse.host + '/' + drone_info.mission[mission_name][chk_cnt][idx].split(':')[1];
-                                        +'?ct=json';
-                                        conf.sub.push(JSON.parse(JSON.stringify(info)));
-                                    }
-                                }
-                            }
-                        }
-
-                        chk_cnt = 'sub_container';
-                        if (drone_info.mission[mission_name].hasOwnProperty(chk_cnt)) {
-                            for (idx in drone_info.mission[mission_name][chk_cnt]) {
-                                if (drone_info.mission[mission_name][chk_cnt].hasOwnProperty(idx)) {
-                                    container_name = drone_info.mission[mission_name][chk_cnt][idx];
-                                    info = {};
-                                    info.parent = '/Mobius/' + drone_info.gcs + '/Mission_Data/' + drone_info.drone + '/' + mission_name;
-                                    info.name = container_name;
-                                    conf.cnt.push(JSON.parse(JSON.stringify(info)));
-
-                                    info = {};
-                                    info.parent = '/Mobius/' + drone_info.gcs + '/Mission_Data/' + drone_info.drone + '/' + mission_name + '/' + container_name;
-                                    info.name = 'sub_msw';
-                                    info.nu = 'mqtt://' + conf.cse.host + '/' + conf.ae.id + '?ct=json';
-                                    conf.sub.push(JSON.parse(JSON.stringify(info)));
-
-                                    if (drone_info.hasOwnProperty('rc')) {
-                                        my_rc_name = drone_info.rc;
-                                        if (mission_name === 'msw_remote_gimbal') {
-                                            sub_rc_topic = '/Mobius/' + drone_info.gcs + '/RC_Data/' + my_rc_name + '/command';
-                                            pub_rc_topic = '/Mobius/' + drone_info.gcs + '/Mission_Data/' + drone_info.drone + '/' + mission_name + '/' + container_name;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        chk_cnt = 'fc_container';
-                        if (drone_info.mission[mission_name].hasOwnProperty(chk_cnt)) {
-                            for (idx in drone_info.mission[mission_name][chk_cnt]) {
-                                if (drone_info.mission[mission_name][chk_cnt].hasOwnProperty(idx)) {
-                                    container_name = drone_info.mission[mission_name][chk_cnt][idx];
-                                    info = {};
-                                    info.parent = '/Mobius/' + drone_info.gcs + '/Mission_Data/' + drone_info.drone + '/' + mission_name;
-                                    info.name = container_name;
-                                    conf.fc.push(JSON.parse(JSON.stringify(info)));
-                                }
-                            }
-                        }
-
-                        chk_cnt = 'git';
-                        if (drone_info.mission[mission_name].hasOwnProperty(chk_cnt)) {
-                            var repo_arr = drone_info.mission[mission_name][chk_cnt].split('/');
-                            var directory_name = mission_name + '_' + repo_arr[repo_arr.length - 1].replace('.git', '');
-                            try {
-                                if (fs.existsSync('./' + directory_name)) {
-                                    setTimeout(git_pull, 10, mission_name, directory_name);
-                                } else {
-                                    setTimeout(git_clone, 10, mission_name, directory_name, drone_info.mission[mission_name][chk_cnt]);
-                                }
-                            } catch (e) {
-                                console.log(e.message);
-                            }
-                        }
-                    }
-                }
-            }
-
             if (drone_info.hasOwnProperty('mav_ver')) {
                 mav_ver = drone_info.mav_ver;
             } else {
@@ -620,10 +517,6 @@ function retrieve_my_cnt_name(callback) {
                 my_system_id = 8;
             }
 
-            muv_pub_fc_gpi_topic = '/Mobius/' + drone_info.gcs + '/Drone_Data/' + drone_info.drone + '/global_position_int';
-            muv_pub_fc_hb_topic = '/Mobius/' + drone_info.gcs + '/Drone_Data/' + drone_info.drone + '/heartbeat';
-            muv_pub_fc_system_time_topic = '/Mobius/' + drone_info.gcs + '/Drone_Data/' + drone_info.drone + '/system_time';
-            muv_pub_fc_timesync_topic = '/Mobius/' + drone_info.gcs + '/Drone_Data/' + drone_info.drone + '/timesync';
             muv_sub_gcs_topic = '/Mobius/' + my_gcs_name + '/GCS_Data/' + drone_info.drone;
             MQTT_SUBSCRIPTION_ENABLE = 1;
             sh_state = 'crtae';
@@ -752,15 +645,10 @@ function http_watchdog() {
 
 setTimeout(http_watchdog, normal_interval);
 
-function check_rtv_cnt() {
-    sh_state = 'rtvct';
-    http_watchdog();
-}
-
 // for notification
 //var xmlParser = bodyParser.text({ type: '*/*' });
 
-function mqtt_connect(serverip, sub_gcs_topic, noti_topic, sub_rc_topic) {
+function mqtt_connect(serverip, sub_gcs_topic, noti_topic) {
     if (mqtt_client == null) {
         if (conf.usesecure === 'disable') {
             var connectOptions = {
@@ -807,15 +695,14 @@ function mqtt_connect(serverip, sub_gcs_topic, noti_topic, sub_rc_topic) {
                 });
             }
 
-            if (sub_rc_topic !== '') {
-                mqtt_client.subscribe(sub_rc_topic, function () {
-                    console.log('[mqtt_connect] sub_rc_topic is subscribed: ' + sub_rc_topic);
-                });
-            }
-
             if (noti_topic != '') {
                 mqtt_client.subscribe(noti_topic, function () {
                     console.log('[mqtt_connect] noti_topic is subscribed:  ' + noti_topic);
+                });
+            }
+            if (req_rc_topic !== '') {
+                mqtt_client.publish(req_rc_topic, drone_info.drone, function (){
+                    console.log('[mqtt_connect] send my_drone_name to nCube-RC [' + my_rc_name + '] :  ' + drone_info.drone);
                 });
             }
         });
@@ -823,8 +710,6 @@ function mqtt_connect(serverip, sub_gcs_topic, noti_topic, sub_rc_topic) {
         mqtt_client.on('message', function (topic, message) {
             if (topic == sub_gcs_topic) {
                 tas_mav.gcs_noti_handler(message);
-            } else if (topic == sub_rc_topic) {
-                mqtt_client.publish(pub_rc_topic, message);
             } else {
                 if (topic.includes('/oneM2M/req/')) {
                     var jsonObj = JSON.parse(message.toString());
@@ -844,92 +729,3 @@ function mqtt_connect(serverip, sub_gcs_topic, noti_topic, sub_rc_topic) {
         });
     }
 }
-
-function muv_mqtt_connect(broker_ip, port, noti_topic) {
-    if (muv_mqtt_client == null) {
-        if (conf.usesecure === 'disable') {
-            var connectOptions = {
-                host: broker_ip,
-                port: port,
-//              username: 'keti',
-//              password: 'keti123',
-                protocol: "mqtt",
-                keepalive: 10,
-//              clientId: serverUID,
-                protocolId: "MQTT",
-                protocolVersion: 4,
-                clean: true,
-                reconnectPeriod: 2000,
-                connectTimeout: 2000,
-                rejectUnauthorized: false
-            };
-        } else {
-            connectOptions = {
-                host: broker_ip,
-                port: port,
-                protocol: "mqtts",
-                keepalive: 10,
-//              clientId: serverUID,
-                protocolId: "MQTT",
-                protocolVersion: 4,
-                clean: true,
-                reconnectPeriod: 2000,
-                connectTimeout: 2000,
-                key: fs.readFileSync("./server-key.pem"),
-                cert: fs.readFileSync("./server-crt.pem"),
-                rejectUnauthorized: false
-            };
-        }
-
-        muv_mqtt_client = mqtt.connect(connectOptions);
-
-        muv_mqtt_client.on('connect', function () {
-            console.log('muv_mqtt connected to ' + broker_ip);
-            for (var idx in noti_topic) {
-                if (noti_topic.hasOwnProperty(idx)) {
-                    muv_mqtt_client.subscribe(noti_topic[idx]);
-                    console.log('[muv_mqtt_connect] noti_topic[' + idx + ']: ' + noti_topic[idx]);
-                }
-            }
-        });
-
-        muv_mqtt_client.on('message', function (topic, message) {
-            try {
-                var msg_obj = JSON.parse(message.toString());
-                send_to_Mobius((topic), msg_obj, parseInt(Math.random() * 10));
-                //console.log(topic + ' - ' + JSON.stringify(msg_obj));
-            } catch (e) {
-                msg_obj = message.toString();
-                send_to_Mobius((topic), msg_obj, parseInt(Math.random() * 10));
-                //console.log(topic + ' - ' + msg_obj);
-            }
-        });
-
-        muv_mqtt_client.on('error', function (err) {
-            console.log(err.message);
-        });
-    }
-}
-
-function send_to_Mobius(topic, content_each_obj, gap) {
-    setTimeout(function (topic, content_each_obj) {
-        sh_adn.crtci(topic + '?rcn=0', 0, content_each_obj, null, function () {
-
-        });
-    }, gap, topic, content_each_obj);
-}
-
-// for test
-// setInterval(function () {
-//     if (sh_state === 'crtci') {
-//         var fc = {};
-//         fc.global_position_int = {};
-//         fc.global_position_int.time_boot_ms = parseInt(Math.random()*100);
-//         fc.global_position_int.lat = parseInt(Math.random()*100);
-//         fc.global_position_int.lon = parseInt(Math.random()*100);
-//         fc.global_position_int.alt = parseInt(Math.random()*100);
-//
-//         var fc_topic = '/Mobius/' + drone_info.gcs + '/Drone_Data/' + drone_info.drone +'/global_position_int';
-//         muv_mqtt_client.publish(fc_topic, JSON.stringify(fc.global_position_int));
-//     }
-// }, 1500);
