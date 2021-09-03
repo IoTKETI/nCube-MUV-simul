@@ -23,7 +23,7 @@ let HOST = '127.0.0.1';
 let PORT1 = 14550; // output: SITL --> GCS
 let PORT2 = 14552; // input : GCS --> SITL
 
-let sitlUDP = null;
+global.sitlUDP = null;
 
 exports.ready = function tas_ready() {
     if (my_drone_type === 'pixhawk') {
@@ -118,21 +118,11 @@ for (let n = 0; n <= 0xff; ++n) {
     byteToHex.push(hexOctet);
 }
 
-function hex(arrayBuffer) {
-    const buff = new Uint8Array(arrayBuffer);
-    const hexOctets = []; // new Array(buff.length) is even faster (preallocates necessary array size), then use hexOctets[i] instead of .push()
-
-    for (let i = 0; i < buff.length; ++i)
-        hexOctets.push(byteToHex[buff[i]]);
-
-    return hexOctets.join("");
-}
-
 var mavStrFromDrone = '';
 var mavStrFromDroneLength = 0;
 
 function mavPortData(data) {
-    mavStrFromDrone += hex(data);
+    mavStrFromDrone += data.toString('hex').toLowerCase();
     while (mavStrFromDrone.length > 12) {
         var stx = mavStrFromDrone.substr(0, 2);
         if (stx === 'fe') {
@@ -145,13 +135,16 @@ function mavPortData(data) {
                 send_aggr_to_Mobius(my_cnt_name, mavPacket, 1500);
                 setTimeout(parseMavFromDrone, 0, mavPacket);
 
+                //if(mavStrFromDroneLength > 0) {
                 mavStrFromDrone = mavStrFromDrone.substr(mavLength);
                 mavStrFromDroneLength = 0;
+                //}
             } else {
                 break;
             }
         } else {
             mavStrFromDrone = mavStrFromDrone.substr(2);
+            //console.log(mavStrFromDrone);
         }
     }
 }
